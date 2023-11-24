@@ -5,6 +5,7 @@
     "langchain": "0.0.151"
   },
   "devDependencies": {
+    "dotenv": "^16.3.1",
     "vite": "latest"
   },
   "scripts": {
