@@ -1,36 +1,47 @@
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { createClient } from "@supabase/supabase-js";
+import { ChatOpenAI } from "langchain/chat_models/openai";
+import { PromptTemplate } from "langchain/prompts";
 import { SupabaseVectorStore } from "langchain/vectorstores/supabase";
 import { OpenAIEmbeddings } from "langchain/embeddings/openai";
-import { dotenv } from "dotenv";
+import { createClient } from "@supabase/supabase-js";
+import { StringOutputParser } from "langchain/schema/output_parser";
 
-try {
- const result = await fetch("scrimba-info.txt");
- const text = await result.text();
- const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 500,
-  chunkOverlap: 20,
-  separators: ["\n\n", "\n", " ", ""],
- });
+document.addEventListener("submit", (e) => {
+ e.preventDefault();
+ progressConversation();
+});
 
- const output = await splitter.createDocuments([text]);
- console.log(import.meta.env);
- const sbApiKey = import.meta.env.VITE_SUPABASE_API_KEY;
- const sbUrl = import.meta.env.VITE_SUPABASE_URL_LC_CHATBOT;
- const openAIApiKey = import.meta.env.VITE_OPENAI_API_KEY;
+const openAIApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
- const client = createClient(sbUrl, sbApiKey);
+const embeddings = new OpenAIEmbeddings({ openAIApiKey });
+const sbApiKey = import.meta.env.VITE_SUPABASE_API_KEY;
+const sbUrl = import.meta.env.VITE_SUPABASE_URL_LC_CHATBOT;
+const client = createClient(sbUrl, sbApiKey);
 
- const vectorStore = await SupabaseVectorStore.fromDocuments(
-  output,
-  new OpenAIEmbeddings({ openAIApiKey }),
-  {
-   client,
-   tableName: "documents",
-  }
- );
+const vectorStore = new SupabaseVectorStore(embeddings, {
+ client,
+ tableName: "documents",
+ queryName: "match_documents",
+});
 
- console.log(output);
-} catch (err) {
- console.log(err);
-}
+const retriever = vectorStore.asRetriever();
+
+const llm = new ChatOpenAI({ openAIApiKey });
+
+const standaloneQuestionTemplate =
+ "Given a question, convert it to a standalone question. question: {question} standalone question:";
+
+const standaloneQuestionPrompt = PromptTemplate.fromTemplate(
+ standaloneQuestionTemplate
+);
+
+const standaloneQuestionChain = standaloneQuestionPrompt
+ .pipe(llm)
+ .pipe(new StringOutputParser())
+ .pipe(retriever);
+
+const response = await standaloneQuestionChain.invoke({
+ question:
+  "What are the technical requirements for running Scrimba? I only have a very old laptop which is not that powerful.",
+});
+
+console.log(response);
